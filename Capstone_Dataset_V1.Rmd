@@ -1,0 +1,188 @@
+---
+title: "Capstone_Dataset_V1"
+author: "Rahul Kothari_500735248"
+date: "February 5, 2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+###FEATURES
+v1_features = read.csv("C:/Users/Rahul.kothari/Desktop/20160627_Desktop_Backup/Ryerson/CKME_136_Capstone/Dataset/Features data set.csv", head = TRUE)
+
+nrow(v1_features)
+ncol(v1_features)
+head(v1_features)
+str(v1_features)
+summary(v1_features)
+
+### Converting store to factor. Integer does not make sense since we are referencing store by number 
+v1_features$Store = as.factor(v1_features$Store)
+
+library(lubridate)
+v1_features$Date <- dmy(v1_features$Date) ### converting date to standard R format (YYYY-MM-DD) using lubridate package
+
+### replacing NA values in markdown to 0 
+
+v1_features$MarkDown1[which(is.na(v1_features$MarkDown1))] <- 0
+v1_features$MarkDown2[which(is.na(v1_features$MarkDown2))] <- 0
+v1_features$MarkDown3[which(is.na(v1_features$MarkDown3))] <- 0
+v1_features$MarkDown4[which(is.na(v1_features$MarkDown4))] <- 0
+v1_features$MarkDown5[which(is.na(v1_features$MarkDown5))] <- 0
+
+### replacing NA values for CPI and unemplyment by its mean
+
+v1_features$CPI[which(is.na(v1_features$CPI))] <- mean(v1_features$CPI, na.rm = TRUE)
+v1_features$Unemployment[which(is.na(v1_features$Unemployment))] <- mean(v1_features$Unemployment, na.rm = TRUE)
+
+str(v1_features)
+summary(v1_features)
+
+###STORES
+v1_stores = read.csv("C:/Users/Rahul.kothari/Desktop/20160627_Desktop_Backup/Ryerson/CKME_136_Capstone/Dataset/stores data-set.csv", head = TRUE)
+
+nrow(v1_stores)
+ncol(v1_stores)
+head(v1_stores)
+str(v1_stores)
+summary(v1_stores)
+
+v1_stores$Store <- as.factor(v1_stores$Store)
+str(v1_stores)
+
+###SALES
+v1_sales = read.csv("C:/Users/Rahul.kothari/Desktop/20160627_Desktop_Backup/Ryerson/CKME_136_Capstone/Dataset/sales data-set.csv", head = TRUE)
+
+nrow(v1_sales)
+ncol(v1_sales)
+head(v1_sales)
+str(v1_sales)
+summary(v1_sales)
+
+
+### converting date to correct format (YYYY-MM-DD)
+library(lubridate)
+v1_sales$Date <- dmy(v1_sales$Date) 
+
+### converting store and department to factor
+
+v1_sales$Store <- as.factor(v1_sales$Store)
+v1_sales$Dept <- as.factor(v1_sales$Dept)
+str(v1_sales)
+
+
+library(ggplot2)
+library(gridExtra)
+
+### Checking distribution of target variabel. 
+### As you can see from summary I have negative values in sales data and range of my data is pretty big.Hence I need to transform my data 
+### Instead of log transformation, which cannot handle negative values, I am transforming my data to "Inverse hyperbolic sine transform"
+
+### Before transform
+Weekly_sales_without_trans <- hist(v1_sales$Weekly_Sales, main = "Distribution of Weekly_sales", xlab = "Weekly_Sales", col = "red", las = 1, breaks = 50)
+
+### After transform
+ihs_weekly_sales <- log10((v1_sales$Weekly_Sales + sqrt(v1_sales$Weekly_Sales^2+1)))
+Weekly_sales_with_trans <- hist(ihs_weekly_sales, main = "Distribution of weekly_sales", xlab = "Weekly_Sales", col = "red", las = 1, breaks = 50)
+
+### From distribution curve it looks like target variable is skewed towards right. Mean is not equal to median. 
+### It does not have long tails in right side so we should not have lots of outliers. But in Negative  
+### Some weeks have negative sales values due to product being returned.
+
+boxplot(v1_sales$Weekly_Sales , xlab = "Weekly_Sales_without_trans")
+boxplot(ihs_weekly_sales, xlab = "Weekly_Sales_with_trans")
+
+library(reshape2)
+library(dplyr)
+library(sqldf)
+
+### Number of records for stores in sales data and arranging by descending order
+store_freq <- v1_sales %>% group_by(Store) %>% tally() %>% arrange(desc(n))
+head(store_freq)
+colnames(store_freq)[2] <- "Total count of records / store"
+head(store_freq)
+### as you can see store 13 has most number of records followed by store 10,4 and 1
+
+### other method to get count library(dplyr) , x <- count (v1_sales,Store). Dont put store in semicolon ""
+### Sql method to calculate average sales per store for each week
+### library(sqldf)
+### weekavg <- sqldf("select avg(Weekly_Sales) as avg, week FROM x GROUP BY week")
+### In below codes, I am taking Average sales per store for last three years of data
+
+library(lubridate)
+x <- v1_sales ### copying sales data in variable x so that I can do exploratory analysis without risking my original sales data
+x$week <- week(x$Date)
+x1 <- x %>% group_by(Store,week) %>% summarise(Avg_Weekly_Sales = mean(Weekly_Sales))
+x1 <- merge(x1,v1_stores, by = "Store")
+
+library(lattice)
+xyplot(Avg_Weekly_Sales ~ week | Store, data = x1)
+xyplot(Avg_Weekly_Sales ~ week | Type, data = x1) ### plotting sales vs type, does not represent clear indication of store id. 
+
+### Plotting average sales vs week for each store type
+
+library(ggplot2)
+g <- ggplot(x1, aes(x = week, y = Avg_Weekly_Sales))
+g + geom_point(aes(color = Type)) + facet_grid(Type ~ Store)
+
+### Though the graph is not clear but it truely indicates that some stores within the same group are high performers. 
+### Example store 10 in group B has weekly average sales of top performers in store A
+
+### Plotting box plot of average weekly sales vs store type
+
+boxplot(x1$Avg_Weekly_Sales ~ x1$Type, main = "Avg Weekly sales per store vs Type", las = 1, col = c("red", "yellow","green"), xlab = "store_type", ylab = "Avg_weekly_sales/store")
+
+x1 %>% filter(Type == "B" & Avg_Weekly_Sales > 25000)
+### Outlier for sales greater than 25000 in store type B corresponds tO store 10 (week 5 to 52) and store 23 (week 48 to 52)  
+x1 %>% filter(Type == "A" & Avg_Weekly_Sales > 40000)
+### Outlier for sales greater than 40000 in store type A corresponds tO week 51 (store # 13,14,20 & 4) and week 52 (store 20)
+
+### Outliers corresponds to sales data. Hence we are not removing them and keeping it to build our models.
+
+### Plotting box plot of store size vs store type
+
+boxplot(x1$Size ~ x1$Type, main = "store size vs Type", las = 1, col = c("red", "yellow","green"), xlab = "store_type", ylab = "store size")
+
+x1 %>% filter(Type == "A" & Size < 50000)
+### Outlier less than 50,000 store size in type A corresponds to store # 33 & 36 
+x1 %>% filter(Type == "B" & Size < 50000)
+### Outlier less than 50,000 store size in type A corresponds to store # 3 (week 1 to 53) & 5 (week 1 to 53)
+
+### Average weekly sales by Department
+x2 <- x %>% group_by(Dept,week) %>% summarise(Avg_Weekly_Sales = mean(Weekly_Sales))
+xyplot(Avg_Weekly_Sales ~ week | Dept, data = x2)
+
+### Since sales per square feet is an important metric to determine high performing stores. We take average sales per year for each store and divide by size (Note:- since we dont have square feet we are taking size). 
+
+library(dplyr)
+x4<- x%>% group_by(Store) %>% summarise(Total_sales = sum(Weekly_Sales)) %>% arrange(desc(Total_sales))
+head(x4)
+x4 <- merge(x4,v1_stores, by = "Store")
+x4$Total_sales_per_size <- x4$Total_sales/x4$Size
+x4$rank_productivity <- rank(-x4$Total_sales_per_size)
+
+library(lattice)
+xyplot(Total_sales_per_size ~ Store, data = x4)
+
+library(ggplot2)
+ggplot(x4, aes(x = Store, y = Total_sales_per_size)) + geom_point(aes(color = Type)) 
+
+### Average weekly sales by store and department 
+x$year <- year(x$Date)
+x3 <- x %>% group_by(year,week) %>% summarise(Avg_Weekly_Sales = mean(Weekly_Sales))
+xyplot(Avg_Weekly_Sales ~ week, data = x3)
+plot.ts(x3,frequency = 53, start = c(2010,6))
+
+
+```
+
+
